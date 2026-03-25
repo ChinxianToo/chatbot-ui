@@ -1,9 +1,13 @@
 export const dynamic = 'force-dynamic'
 
-const GATEWAY_URL = process.env.AI_GATEWAY_URL!
+const GATEWAY_URL = process.env.AI_GATEWAY_URL ?? process.env.NEXT_PUBLIC_AI_GATEWAY_URL
 
 export async function POST(request: Request) {
   const body = await request.json()
+
+  if (!GATEWAY_URL) {
+    return new Response('AI_GATEWAY_URL is not configured', { status: 500 })
+  }
 
   let gatewayRes: Response
   try {
