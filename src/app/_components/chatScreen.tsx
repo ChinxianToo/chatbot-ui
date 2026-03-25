@@ -10,7 +10,6 @@ export function ChatScreen() {
     setSidebarOpen,
     conversations,
     activeConvId,
-    setActiveConvId,
     input,
     setInput,
     messages,
@@ -19,6 +18,7 @@ export function ChatScreen() {
     handleNewChat,
     handleSubmit,
     handleSuggestion,
+    handleSelectConv,
     handleDeleteConv,
   } = useChatPage()
 
@@ -27,7 +27,7 @@ export function ChatScreen() {
       <Sidebar
         conversations={conversations}
         activeId={activeConvId}
-        onSelect={setActiveConvId}
+        onSelect={handleSelectConv}
         onNew={handleNewChat}
         onDelete={handleDeleteConv}
         isOpen={sidebarOpen}

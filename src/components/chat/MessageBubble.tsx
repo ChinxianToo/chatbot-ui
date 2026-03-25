@@ -1,19 +1,10 @@
 'use client'
 
 import { cn } from '@/lib/utils'
-import type { UIMessage } from 'ai'
 
-function getMessageText(message: UIMessage): string {
-  if (!message.parts || !Array.isArray(message.parts)) return ''
-  return message.parts
-    .filter((p): p is { type: 'text'; text: string } => p.type === 'text')
-    .map((p) => p.text)
-    .join('')
-}
-
-export function MessageBubble({ message }: { message: UIMessage }) {
+export function MessageBubble({ message }: { message: Message }) {
   const isUser = message.role === 'user'
-  const text = getMessageText(message)
+  const text = message.content
 
   return (
     <div className={cn('flex gap-3 w-full', isUser ? 'justify-end' : 'justify-start')}>

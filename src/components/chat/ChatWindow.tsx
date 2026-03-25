@@ -1,7 +1,6 @@
 'use client'
 
 import { useRef, useEffect } from 'react'
-import type { UIMessage } from 'ai'
 import { MessageBubble, TypingIndicator } from './MessageBubble'
 import { ChatInput } from './ChatInput'
 import { EmptyState } from './EmptyState'
@@ -17,7 +16,7 @@ export function ChatWindow({
   onToggleSidebar,
   isSidebarOpen,
 }: {
-  messages: UIMessage[]
+  messages: Message[]
   input: string
   status: 'ready' | 'streaming' | 'submitted' | 'error'
   onInputChange: (value: string) => void
@@ -34,8 +33,8 @@ export function ChatWindow({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, status])
 
-  const lastMessage = messages[messages.length - 1]
-  const showTyping = isLoading && lastMessage?.role === 'user'
+  // Show typing dots only while waiting for the first token (submitted but no assistant bubble yet)
+  const showTyping = status === 'submitted'
 
   return (
     <div className="flex flex-col h-full bg-background">
