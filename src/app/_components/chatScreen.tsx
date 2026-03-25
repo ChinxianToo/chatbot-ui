@@ -14,6 +14,7 @@ export function ChatScreen() {
     setInput,
     messages,
     status,
+    streamingStatus,
     stop,
     handleNewChat,
     handleSubmit,
@@ -39,6 +40,7 @@ export function ChatScreen() {
           messages={messages}
           input={input}
           status={status}
+          streamingStatus={streamingStatus}
           onInputChange={setInput}
           onSubmit={handleSubmit}
           onStop={stop}

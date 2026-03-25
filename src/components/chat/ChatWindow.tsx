@@ -9,6 +9,7 @@ export function ChatWindow({
   messages,
   input,
   status,
+  streamingStatus,
   onInputChange,
   onSubmit,
   onStop,
@@ -19,6 +20,7 @@ export function ChatWindow({
   messages: Message[]
   input: string
   status: 'ready' | 'streaming' | 'submitted' | 'error'
+  streamingStatus: string
   onInputChange: (value: string) => void
   onSubmit: () => void
   onStop: () => void
@@ -33,7 +35,8 @@ export function ChatWindow({
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' })
   }, [messages, status])
 
-  // Show typing dots only while waiting for the first token (submitted but no assistant bubble yet)
+  // Show typing indicator for the full pre-token phase (submitted) so the
+  // live status text ("Searching knowledge base…") is visible.
   const showTyping = status === 'submitted'
 
   return (
@@ -58,7 +61,7 @@ export function ChatWindow({
           {isLoading && (
             <span className="text-xs text-primary flex items-center gap-1">
               <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
-              Thinking...
+              {streamingStatus || 'Thinking…'}
             </span>
           )}
         </div>
@@ -77,7 +80,7 @@ export function ChatWindow({
             {messages.map((message) => (
               <MessageBubble key={message.id} message={message} />
             ))}
-            {showTyping && <TypingIndicator />}
+            {showTyping && <TypingIndicator statusMessage={streamingStatus} />}
             <div ref={messagesEndRef} />
           </div>
         )}

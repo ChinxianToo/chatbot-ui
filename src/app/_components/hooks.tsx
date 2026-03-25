@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 
-const GATEWAY_URL = process.env.NEXT_PUBLIC_AI_GATEWAY_URL!
+const GATEWAY_URL = process.env.NEXT_PUBLIC_AI_GATEWAY_URL ?? ''
 
 export function useChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -11,11 +11,11 @@ export function useChatPage() {
   const [messages, setMessages] = useState<Message[]>([])
   const [status, setStatus] = useState<'ready' | 'streaming' | 'submitted' | 'error'>('ready')
   const [input, setInput] = useState('')
+  // Live status text shown in the typing indicator ("Searching knowledge base …")
+  const [streamingStatus, setStreamingStatus] = useState('')
 
   const abortRef = useRef<AbortController | null>(null)
-  // Keyed by conversation id — survives re-renders without causing them
   const threadIds = useRef(new Map<string, string>())
-  // Ref mirror of activeConvId so async callbacks can read it without stale closure
   const activeConvIdRef = useRef<string | null>(null)
 
   const setActiveConvId = useCallback((id: string | null) => {
@@ -27,6 +27,7 @@ export function useChatPage() {
 
   const stop = useCallback(() => {
     abortRef.current?.abort()
+    setStreamingStatus('')
     setStatus('ready')
   }, [])
 
@@ -35,6 +36,7 @@ export function useChatPage() {
 
     setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }])
     setStatus('submitted')
+    setStreamingStatus('')
 
     const controller = new AbortController()
     abortRef.current = controller
@@ -50,7 +52,11 @@ export function useChatPage() {
       if (!res.ok || !res.body) {
         setMessages((prev) => [
           ...prev,
-          { id: crypto.randomUUID(), role: 'assistant', content: `⚠️ Request failed (HTTP ${res.status}). Check that the gateway URL is configured correctly in Vercel environment variables.` },
+          {
+            id: crypto.randomUUID(),
+            role: 'assistant',
+            content: `⚠️ Request failed (HTTP ${res.status}). Check that NEXT_PUBLIC_AI_GATEWAY_URL is set in your Vercel environment variables.`,
+          },
         ])
         setStatus('error')
         return
@@ -62,9 +68,28 @@ export function useChatPage() {
       let assistantContent = ''
       const assistantId = crypto.randomUUID()
 
-      // Seed an empty assistant bubble to stream tokens into
-      setMessages((prev) => [...prev, { id: assistantId, role: 'assistant', content: '' }])
-      setStatus('streaming')
+      // Pending state captured before the first visible event
+      let pendingGuardrail: GuardrailStatus | undefined
+      let bubbleSeeded = false
+
+      // Seed the assistant bubble on the first content-producing event so the
+      // typing indicator stays visible for the full pre-token phase.
+      const seedBubble = (extra?: Partial<Message>) => {
+        if (bubbleSeeded) return
+        bubbleSeeded = true
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: assistantId,
+            role: 'assistant',
+            content: '',
+            guardrailStatus: pendingGuardrail,
+            ...extra,
+          },
+        ])
+        setStatus('streaming')
+        setStreamingStatus('')
+      }
 
       loop: while (true) {
         const { done, value } = await reader.read()
@@ -75,9 +100,7 @@ export function useChatPage() {
         buffer = chunks.pop()!
 
         for (const chunk of chunks) {
-          // Parse SSE fields — an event block may contain multiple lines:
-          //   event: token          ← optional SSE event type
-          //   data: {"content":"…"} ← payload
+          // Parse all SSE fields — gateway emits:  event: <type>\ndata: <json>
           const lines = chunk.split('\n')
           let sseEvent = ''
           let sseData = ''
@@ -89,27 +112,67 @@ export function useChatPage() {
           if (!sseData) continue
           if (sseData === '[DONE]') break loop
 
-          let ev: Record<string, string>
+          let ev: Record<string, unknown>
           try { ev = JSON.parse(sseData) } catch { continue }
 
-          // Resolve event type: prefer JSON "event" field, fall back to SSE "event:" line
-          const eventType = ev.event ?? sseEvent
+          const eventType = (ev.event as string | undefined) ?? sseEvent
 
           switch (eventType) {
             case 'start':
-              threadIds.current.set(convId, ev.thread_id)
+              threadIds.current.set(convId, ev.thread_id as string)
               break
+
+            case 'guardrail':
+              // Capture status — bubble may not exist yet; apply when seeding
+              pendingGuardrail = ev.status as GuardrailStatus
+              break
+
+            case 'status':
+              // Show live progress in the typing indicator
+              setStreamingStatus((ev.message as string) ?? '')
+              break
+
+            case 'retrieval':
+              // Informational — no UI action needed
+              break
+
             case 'token':
-              assistantContent += ev.content ?? ev.text ?? ''
+              seedBubble()
+              assistantContent += (ev.content ?? ev.text ?? '') as string
               setMessages((prev) =>
                 prev.map((m) => m.id === assistantId ? { ...m, content: assistantContent } : m)
               )
               break
+
+            case 'export_ready': {
+              const exportInfo: ExportInfo = {
+                downloadUrl: `${GATEWAY_URL}${ev.download_url as string}`,
+                filename: ev.filename as string,
+                division: ev.division as string,
+                divisionSummary: (ev.division_summary ?? '') as string,
+                startYear: String(ev.start_year ?? ''),
+                endYear: String(ev.end_year ?? ''),
+                recordCount: Number(ev.record_count ?? 0),
+              }
+              seedBubble({ exportInfo })
+              // If bubble was already seeded, patch exportInfo in
+              setMessages((prev) =>
+                prev.map((m) => m.id === assistantId ? { ...m, exportInfo } : m)
+              )
+              break
+            }
+
+            case 'done':
+              // Also capture thread_id from done in case start was missed
+              if (ev.thread_id) threadIds.current.set(convId, ev.thread_id as string)
+              break loop
+
             case 'error':
+              seedBubble()
               setMessages((prev) =>
                 prev.map((m) =>
                   m.id === assistantId
-                    ? { ...m, content: `⚠️ ${ev.message ?? 'Gateway error'}` }
+                    ? { ...m, content: `⚠️ ${(ev.message as string) ?? 'Gateway error'}` }
                     : m
                 )
               )
@@ -119,8 +182,10 @@ export function useChatPage() {
         }
       }
 
+      setStreamingStatus('')
       setStatus('ready')
     } catch (err) {
+      setStreamingStatus('')
       if ((err as Error).name !== 'AbortError') setStatus('error')
       else setStatus('ready')
     }
@@ -161,7 +226,6 @@ export function useChatPage() {
       ])
       setActiveConvId(convId)
     } else {
-      // Update title from the first user message if still at default
       setConversations((prev) =>
         prev.map((c) =>
           c.id === convId && c.title === 'New conversation'
@@ -187,11 +251,9 @@ export function useChatPage() {
   const handleDeleteConv = useCallback((id: string) => {
     const threadId = threadIds.current.get(id)
     if (threadId) {
-      // Inform the gateway to clear LangGraph history — fire-and-forget
       fetch(`${GATEWAY_URL}/v1/sessions/${threadId}`, { method: 'DELETE' }).catch(() => {})
       threadIds.current.delete(id)
     }
-    // Clear messages if the active conversation is being deleted
     if (activeConvIdRef.current === id) {
       setMessages([])
       setActiveConvId(null)
@@ -208,6 +270,7 @@ export function useChatPage() {
     setInput,
     messages,
     status,
+    streamingStatus,
     stop,
     handleNewChat,
     handleSubmit,
