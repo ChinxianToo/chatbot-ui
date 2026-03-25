@@ -7,6 +7,7 @@ export function Sidebar({
   activeId,
   onSelect,
   onNew,
+  onDelete,
   isOpen,
   onToggle,
 }: {
@@ -14,6 +15,7 @@ export function Sidebar({
   activeId: string | null
   onSelect: (id: string) => void
   onNew: () => void
+  onDelete: (id: string) => void
   isOpen: boolean
   onToggle: () => void
 }) {
@@ -79,19 +81,33 @@ export function Sidebar({
               <p className="text-xs text-muted-foreground px-3 py-2">No conversations yet</p>
             ) : (
               conversations.map((conv) => (
-                <button
+                <div
                   key={conv.id}
-                  onClick={() => onSelect(conv.id)}
                   className={cn(
-                    'w-full text-left px-3 py-2.5 rounded-lg transition-colors group',
+                    'group flex items-center gap-1 rounded-lg transition-colors',
                     activeId === conv.id
                       ? 'bg-sidebar-accent text-sidebar-foreground'
                       : 'hover:bg-sidebar-accent/50 text-muted-foreground hover:text-sidebar-foreground'
                   )}
                 >
-                  <p className="text-sm font-medium truncate">{conv.title}</p>
-                  <p className="text-xs truncate mt-0.5 opacity-60">{conv.preview}</p>
-                </button>
+                  <button
+                    onClick={() => onSelect(conv.id)}
+                    className="flex-1 min-w-0 text-left px-3 py-2.5"
+                  >
+                    <p className="text-sm font-medium truncate">{conv.title}</p>
+                    <p className="text-xs truncate mt-0.5 opacity-60">{conv.preview}</p>
+                  </button>
+
+                  <button
+                    onClick={(e) => { e.stopPropagation(); onDelete(conv.id) }}
+                    className="shrink-0 mr-2 p-1 rounded opacity-0 group-hover:opacity-100 hover:bg-destructive/20 hover:text-destructive text-muted-foreground transition-all"
+                    aria-label="Delete conversation"
+                  >
+                    <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" />
+                    </svg>
+                  </button>
+                </div>
               ))
             )}
           </div>

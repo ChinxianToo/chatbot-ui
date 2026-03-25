@@ -19,6 +19,7 @@ export function ChatScreen() {
     handleNewChat,
     handleSubmit,
     handleSuggestion,
+    handleDeleteConv,
   } = useChatPage()
 
   return (
@@ -28,6 +29,7 @@ export function ChatScreen() {
         activeId={activeConvId}
         onSelect={setActiveConvId}
         onNew={handleNewChat}
+        onDelete={handleDeleteConv}
         isOpen={sidebarOpen}
         onToggle={() => setSidebarOpen((o) => !o)}
       />

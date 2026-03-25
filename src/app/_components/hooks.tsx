@@ -70,6 +70,11 @@ export function useChatPage() {
     setInput(text)
   }, [])
 
+  const handleDeleteConv = useCallback((id: string) => {
+    setConversations((prev) => prev.filter((c) => c.id !== id))
+    setActiveConvId((current) => (current === id ? null : current))
+  }, [])
+
   return {
     sidebarOpen,
     setSidebarOpen,
@@ -84,5 +89,6 @@ export function useChatPage() {
     handleNewChat,
     handleSubmit,
     handleSuggestion,
+    handleDeleteConv,
   }
 }
