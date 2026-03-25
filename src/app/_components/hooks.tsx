@@ -75,20 +75,32 @@ export function useChatPage() {
         buffer = chunks.pop()!
 
         for (const chunk of chunks) {
-          if (!chunk.startsWith('data:')) continue
-          const raw = chunk.slice(5).trim()
-          if (raw === '[DONE]') break loop
+          // Parse SSE fields — an event block may contain multiple lines:
+          //   event: token          ← optional SSE event type
+          //   data: {"content":"…"} ← payload
+          const lines = chunk.split('\n')
+          let sseEvent = ''
+          let sseData = ''
+          for (const line of lines) {
+            if (line.startsWith('event:')) sseEvent = line.slice(6).trim()
+            else if (line.startsWith('data:')) sseData = line.slice(5).trim()
+          }
+
+          if (!sseData) continue
+          if (sseData === '[DONE]') break loop
 
           let ev: Record<string, string>
-          try { ev = JSON.parse(raw) } catch { continue }
+          try { ev = JSON.parse(sseData) } catch { continue }
 
-          switch (ev.event) {
+          // Resolve event type: prefer JSON "event" field, fall back to SSE "event:" line
+          const eventType = ev.event ?? sseEvent
+
+          switch (eventType) {
             case 'start':
-              // Capture thread_id returned by the gateway
               threadIds.current.set(convId, ev.thread_id)
               break
             case 'token':
-              assistantContent += ev.content
+              assistantContent += ev.content ?? ev.text ?? ''
               setMessages((prev) =>
                 prev.map((m) => m.id === assistantId ? { ...m, content: assistantContent } : m)
               )
