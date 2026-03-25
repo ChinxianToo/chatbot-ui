@@ -2,7 +2,7 @@
 
 import { useState, useCallback, useRef } from 'react'
 
-const BASE_URL = process.env.NEXT_PUBLIC_AI_GATEWAY_URL!
+const GATEWAY_URL = process.env.NEXT_PUBLIC_AI_GATEWAY_URL!
 
 export function useChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
@@ -40,7 +40,7 @@ export function useChatPage() {
     abortRef.current = controller
 
     try {
-      const res = await fetch(`${BASE_URL}/v1/chat/stream`, {
+      const res = await fetch('/api/chat/stream', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ message: text, thread_id: threadId }),
@@ -165,7 +165,7 @@ export function useChatPage() {
     const threadId = threadIds.current.get(id)
     if (threadId) {
       // Inform the gateway to clear LangGraph history — fire-and-forget
-      fetch(`${BASE_URL}/v1/sessions/${threadId}`, { method: 'DELETE' }).catch(() => {})
+      fetch(`${GATEWAY_URL}/v1/sessions/${threadId}`, { method: 'DELETE' }).catch(() => {})
       threadIds.current.delete(id)
     }
     // Clear messages if the active conversation is being deleted
