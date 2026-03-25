@@ -48,6 +48,10 @@ export function useChatPage() {
       })
 
       if (!res.ok || !res.body) {
+        setMessages((prev) => [
+          ...prev,
+          { id: crypto.randomUUID(), role: 'assistant', content: `⚠️ Request failed (HTTP ${res.status}). Check that the gateway URL is configured correctly in Vercel environment variables.` },
+        ])
         setStatus('error')
         return
       }
@@ -90,6 +94,13 @@ export function useChatPage() {
               )
               break
             case 'error':
+              setMessages((prev) =>
+                prev.map((m) =>
+                  m.id === assistantId
+                    ? { ...m, content: `⚠️ ${ev.message ?? 'Gateway error'}` }
+                    : m
+                )
+              )
               setStatus('error')
               break loop
           }
