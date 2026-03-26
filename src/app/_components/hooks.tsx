@@ -1,6 +1,7 @@
 'use client'
 
-import { useState, useCallback, useRef } from 'react'
+import { useState, useCallback, useRef, useEffect, useMemo } from 'react'
+import { loadChatState, saveChatState } from '@/lib/chat-storage'
 
 const GATEWAY_URL = process.env.NEXT_PUBLIC_AI_GATEWAY_URL ?? ''
 
@@ -8,20 +9,70 @@ export function useChatPage() {
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [conversations, setConversations] = useState<Conversation[]>([])
   const [activeConvId, setActiveConvIdState] = useState<string | null>(null)
-  const [messages, setMessages] = useState<Message[]>([])
+  const [messagesByConv, setMessagesByConv] = useState<Record<string, Message[]>>({})
   const [status, setStatus] = useState<'ready' | 'streaming' | 'submitted' | 'error'>('ready')
   const [input, setInput] = useState('')
-  // Live status text shown in the typing indicator ("Searching knowledge base …")
   const [streamingStatus, setStreamingStatus] = useState('')
+  /** Bumps when gateway thread_id map changes so we persist threadIdsRef. */
+  const [threadPersistTick, setThreadPersistTick] = useState(0)
 
   const abortRef = useRef<AbortController | null>(null)
-  const threadIds = useRef(new Map<string, string>())
+  const threadIdsRef = useRef(new Map<string, string>())
   const activeConvIdRef = useRef<string | null>(null)
+  const hydratedRef = useRef(false)
+
+  const messages = useMemo(
+    () => (activeConvId ? (messagesByConv[activeConvId] ?? []) : []),
+    [activeConvId, messagesByConv]
+  )
 
   const setActiveConvId = useCallback((id: string | null) => {
     activeConvIdRef.current = id
     setActiveConvIdState(id)
   }, [])
+
+  const bumpThreadPersist = useCallback(() => {
+    setThreadPersistTick((t) => t + 1)
+  }, [])
+
+  const updateMessagesForConv = useCallback(
+    (convId: string, updater: (prev: Message[]) => Message[]) => {
+      setMessagesByConv((prev) => {
+        const cur = prev[convId] ?? []
+        return { ...prev, [convId]: updater(cur) }
+      })
+    },
+    []
+  )
+
+  // Hydrate from localStorage after mount (avoids SSR/localStorage clash & wiping store).
+  useEffect(() => {
+    const saved = loadChatState()
+    if (saved?.conversations?.length) {
+      setConversations(saved.conversations)
+    }
+    if (saved?.activeConvId !== undefined) {
+      activeConvIdRef.current = saved.activeConvId
+      setActiveConvIdState(saved.activeConvId)
+    }
+    if (saved?.messagesByConv && Object.keys(saved.messagesByConv).length > 0) {
+      setMessagesByConv(saved.messagesByConv)
+    }
+    if (saved?.threadIds) {
+      threadIdsRef.current = new Map(Object.entries(saved.threadIds))
+    }
+    hydratedRef.current = true
+  }, [])
+
+  useEffect(() => {
+    if (!hydratedRef.current) return
+    saveChatState({
+      conversations,
+      activeConvId,
+      messagesByConv,
+      threadIds: Object.fromEntries(threadIdsRef.current),
+    })
+  }, [conversations, activeConvId, messagesByConv, threadPersistTick])
 
   // ── streaming ──────────────────────────────────────────────────────────────
 
@@ -32,9 +83,9 @@ export function useChatPage() {
   }, [])
 
   const streamMessage = useCallback(async (text: string, convId: string) => {
-    const threadId = threadIds.current.get(convId) ?? null
+    const threadId = threadIdsRef.current.get(convId) ?? null
 
-    setMessages((prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }])
+    updateMessagesForConv(convId, (prev) => [...prev, { id: crypto.randomUUID(), role: 'user', content: text }])
     setStatus('submitted')
     setStreamingStatus('')
 
@@ -50,7 +101,7 @@ export function useChatPage() {
       })
 
       if (!res.ok || !res.body) {
-        setMessages((prev) => [
+        updateMessagesForConv(convId, (prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
@@ -68,16 +119,13 @@ export function useChatPage() {
       let assistantContent = ''
       const assistantId = crypto.randomUUID()
 
-      // Pending state captured before the first visible event
       let pendingGuardrail: GuardrailStatus | undefined
       let bubbleSeeded = false
 
-      // Seed the assistant bubble on the first content-producing event so the
-      // typing indicator stays visible for the full pre-token phase.
       const seedBubble = (extra?: Partial<Message>) => {
         if (bubbleSeeded) return
         bubbleSeeded = true
-        setMessages((prev) => [
+        updateMessagesForConv(convId, (prev) => [
           ...prev,
           {
             id: assistantId,
@@ -100,7 +148,6 @@ export function useChatPage() {
         buffer = chunks.pop()!
 
         for (const chunk of chunks) {
-          // Parse all SSE fields — gateway emits:  event: <type>\ndata: <json>
           const lines = chunk.split('\n')
           let sseEvent = ''
           let sseData = ''
@@ -119,27 +166,25 @@ export function useChatPage() {
 
           switch (eventType) {
             case 'start':
-              threadIds.current.set(convId, ev.thread_id as string)
+              threadIdsRef.current.set(convId, ev.thread_id as string)
+              bumpThreadPersist()
               break
 
             case 'guardrail':
-              // Capture status — bubble may not exist yet; apply when seeding
               pendingGuardrail = ev.status as GuardrailStatus
               break
 
             case 'status':
-              // Show live progress in the typing indicator
               setStreamingStatus((ev.message as string) ?? '')
               break
 
             case 'retrieval':
-              // Informational — no UI action needed
               break
 
             case 'token':
               seedBubble()
               assistantContent += (ev.content ?? ev.text ?? '') as string
-              setMessages((prev) =>
+              updateMessagesForConv(convId, (prev) =>
                 prev.map((m) => m.id === assistantId ? { ...m, content: assistantContent } : m)
               )
               break
@@ -155,21 +200,22 @@ export function useChatPage() {
                 recordCount: Number(ev.record_count ?? 0),
               }
               seedBubble({ exportInfo })
-              // If bubble was already seeded, patch exportInfo in
-              setMessages((prev) =>
+              updateMessagesForConv(convId, (prev) =>
                 prev.map((m) => m.id === assistantId ? { ...m, exportInfo } : m)
               )
               break
             }
 
             case 'done':
-              // Also capture thread_id from done in case start was missed
-              if (ev.thread_id) threadIds.current.set(convId, ev.thread_id as string)
+              if (ev.thread_id) {
+                threadIdsRef.current.set(convId, ev.thread_id as string)
+                bumpThreadPersist()
+              }
               break loop
 
             case 'error':
               seedBubble()
-              setMessages((prev) =>
+              updateMessagesForConv(convId, (prev) =>
                 prev.map((m) =>
                   m.id === assistantId
                     ? { ...m, content: `⚠️ ${(ev.message as string) ?? 'Gateway error'}` }
@@ -189,7 +235,7 @@ export function useChatPage() {
       if ((err as Error).name !== 'AbortError') setStatus('error')
       else setStatus('ready')
     }
-  }, [])
+  }, [bumpThreadPersist, updateMessagesForConv])
 
   // ── conversation management ────────────────────────────────────────────────
 
@@ -205,7 +251,7 @@ export function useChatPage() {
       ...prev,
     ])
     setActiveConvId(newId)
-    setMessages([])
+    setMessagesByConv((prev) => ({ ...prev, [newId]: [] }))
   }, [setActiveConvId])
 
   const handleSubmit = useCallback(() => {
@@ -225,6 +271,7 @@ export function useChatPage() {
         ...prev,
       ])
       setActiveConvId(convId)
+      setMessagesByConv((prev) => ({ ...prev, [convId!]: [] }))
     } else {
       setConversations((prev) =>
         prev.map((c) =>
@@ -249,17 +296,22 @@ export function useChatPage() {
   }, [setActiveConvId])
 
   const handleDeleteConv = useCallback((id: string) => {
-    const threadId = threadIds.current.get(id)
+    const threadId = threadIdsRef.current.get(id)
     if (threadId) {
       fetch(`${GATEWAY_URL}/v1/sessions/${threadId}`, { method: 'DELETE' }).catch(() => {})
-      threadIds.current.delete(id)
+      threadIdsRef.current.delete(id)
+      bumpThreadPersist()
     }
+    setMessagesByConv((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    })
     if (activeConvIdRef.current === id) {
-      setMessages([])
       setActiveConvId(null)
     }
     setConversations((prev) => prev.filter((c) => c.id !== id))
-  }, [setActiveConvId])
+  }, [bumpThreadPersist, setActiveConvId])
 
   return {
     sidebarOpen,
