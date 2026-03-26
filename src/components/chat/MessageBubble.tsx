@@ -128,15 +128,14 @@ export function TypingIndicator({ statusMessage }: { statusMessage?: string }) {
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z" />
         </svg>
       </div>
-      <div className="bg-chat-ai-bubble border border-border/50 px-4 py-3 rounded-2xl rounded-bl-sm">
-        {statusMessage ? (
-          <span className="text-xs text-muted-foreground italic">{statusMessage}</span>
-        ) : (
-          <div className="flex items-center gap-1">
-            <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-            <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-            <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
-          </div>
+      <div className="bg-chat-ai-bubble border border-border/50 px-4 py-3 rounded-2xl rounded-bl-sm flex flex-col gap-1.5">
+        <div className="flex items-center gap-1">
+          <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+          <span className="typing-dot w-1.5 h-1.5 rounded-full bg-muted-foreground" />
+        </div>
+        {statusMessage && (
+          <span className="text-[11px] text-muted-foreground/70 italic">{statusMessage}</span>
         )}
       </div>
     </div>
