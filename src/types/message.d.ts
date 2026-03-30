@@ -16,4 +16,6 @@ type Message = {
   content: string
   guardrailStatus?: GuardrailStatus
   exportInfo?: ExportInfo
+  /** Round-trip time from send to stream complete (assistant messages only). */
+  latencyMs?: number
 }

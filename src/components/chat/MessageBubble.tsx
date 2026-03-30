@@ -30,6 +30,10 @@ export function MessageBubble({ message }: { message: Message }) {
         {!isUser && message.guardrailStatus && (
           <GuardrailBadge status={message.guardrailStatus} />
         )}
+
+        {!isUser && message.latencyMs != null && (
+          <LatencyFootnote ms={message.latencyMs} />
+        )}
       </div>
 
       {isUser && (
@@ -83,6 +87,15 @@ function GuardrailBadge({ status }: { status: GuardrailStatus }) {
       <span className="w-1.5 h-1.5 rounded-full bg-current opacity-70" />
       {label}
     </span>
+  )
+}
+
+function LatencyFootnote({ ms }: { ms: number }) {
+  const label = ms >= 1000 ? `${(ms / 1000).toFixed(2)} s` : `${ms} ms`
+  return (
+    <p className="text-[10px] text-muted-foreground/80 tabular-nums pt-0.5 border-t border-border/30 mt-2">
+      Response latency: {label}
+    </p>
   )
 }
 

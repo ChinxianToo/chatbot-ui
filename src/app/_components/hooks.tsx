@@ -92,6 +92,8 @@ export function useChatPage() {
     const controller = new AbortController()
     abortRef.current = controller
 
+    const requestStarted = performance.now()
+
     try {
       const res = await fetch('/api/chat/stream', {
         method: 'POST',
@@ -101,12 +103,14 @@ export function useChatPage() {
       })
 
       if (!res.ok || !res.body) {
+        const latencyMs = Math.round(performance.now() - requestStarted)
         updateMessagesForConv(convId, (prev) => [
           ...prev,
           {
             id: crypto.randomUUID(),
             role: 'assistant',
             content: `⚠️ Request failed (HTTP ${res.status}). Check that NEXT_PUBLIC_AI_GATEWAY_URL is set in your Vercel environment variables.`,
+            latencyMs,
           },
         ])
         setStatus('error')
@@ -121,6 +125,7 @@ export function useChatPage() {
 
       let pendingGuardrail: GuardrailStatus | undefined
       let bubbleSeeded = false
+      let streamEndedWithError = false
 
       const seedBubble = (extra?: Partial<Message>) => {
         if (bubbleSeeded) return
@@ -139,6 +144,7 @@ export function useChatPage() {
         setStreamingStatus('')
       }
 
+      try {
       loop: while (true) {
         const { done, value } = await reader.read()
         if (done) break
@@ -215,6 +221,7 @@ export function useChatPage() {
 
             case 'error':
               seedBubble()
+              streamEndedWithError = true
               updateMessagesForConv(convId, (prev) =>
                 prev.map((m) =>
                   m.id === assistantId
@@ -222,14 +229,21 @@ export function useChatPage() {
                     : m
                 )
               )
-              setStatus('error')
               break loop
           }
         }
       }
+      } finally {
+        if (bubbleSeeded) {
+          const latencyMs = Math.round(performance.now() - requestStarted)
+          updateMessagesForConv(convId, (prev) =>
+            prev.map((m) => (m.id === assistantId ? { ...m, latencyMs } : m))
+          )
+        }
+      }
 
       setStreamingStatus('')
-      setStatus('ready')
+      setStatus(streamEndedWithError ? 'error' : 'ready')
     } catch (err) {
       setStreamingStatus('')
       if ((err as Error).name !== 'AbortError') setStatus('error')
