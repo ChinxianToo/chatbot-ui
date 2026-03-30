@@ -1,10 +1,13 @@
 'use client'
 
 const SUGGESTIONS = [
-  { icon: '✦', label: 'Explain quantum computing', sub: 'in simple terms' },
-  { icon: '✦', label: 'Write a Python function', sub: 'to reverse a linked list' },
-  { icon: '✦', label: 'Help me brainstorm', sub: 'startup ideas for 2026' },
-  { icon: '✦', label: 'Draft an email', sub: 'to request a day off' },
+  { prompt: 'What was the overall Malaysia CPI index in 2020?' },
+  { prompt: 'For transport CPI, which was higher: 2024 or 2025?' },
+  { prompt: 'What was Malaysia overall CPI in 1950?' },
+  {
+    prompt:
+      'what is the CPI for transport in the year of 2014, please export CPI data for the year of 2024',
+  },
 ]
 
 export function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => void }) {
@@ -19,22 +22,22 @@ export function EmptyState({ onSuggestion }: { onSuggestion: (text: string) => v
       <h1 className="text-2xl font-semibold text-foreground text-balance mb-2">
         How can I help you today?
       </h1>
-      <p className="text-sm text-muted-foreground text-balance max-w-xs mb-10">
-        Ask me anything — I can write, explain, code, and much more.
+      <p className="text-sm text-muted-foreground text-balance max-w-md mb-10">
+        Ask about Malaysia CPI (1960–2025): divisions, trends, comparisons, and data exports.
       </p>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 w-full max-w-lg">
         {SUGGESTIONS.map((s, i) => (
           <button
             key={i}
-            onClick={() => onSuggestion(`${s.label} ${s.sub}`)}
+            type="button"
+            onClick={() => onSuggestion(s.prompt)}
             className="flex items-start gap-3 text-left p-3.5 rounded-xl border border-border bg-card hover:border-primary/30 hover:bg-card/80 transition-all duration-200 group"
           >
-            <span className="text-primary text-xs mt-0.5 shrink-0">{s.icon}</span>
-            <div className="min-w-0">
-              <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors truncate">{s.label}</p>
-              <p className="text-xs text-muted-foreground truncate">{s.sub}</p>
-            </div>
+            <span className="text-primary text-xs mt-1 shrink-0">✦</span>
+            <p className="text-sm font-medium text-foreground group-hover:text-primary transition-colors text-pretty leading-snug">
+              {s.prompt}
+            </p>
           </button>
         ))}
       </div>
